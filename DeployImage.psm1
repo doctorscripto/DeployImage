@@ -77,6 +77,52 @@ Clear-DiskStructure $Disk
     $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
+Function Send-SanPolicy
+{
+[CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $OSDrive
+     )
+
+$SanPolicyXML=@"
+<?xml version='1.0' encoding='utf-8' standalone='yes'?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="offlineServicing">
+    <component
+        xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        language="neutral"
+        name="Microsoft-Windows-PartitionManager"
+        processorArchitecture="x86"
+        publicKeyToken="31bf3856ad364e35"
+        versionScope="nonSxS"
+        >
+      <SanPolicy>4</SanPolicy>
+    </component>
+    <component
+        xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        language="neutral"
+        name="Microsoft-Windows-PartitionManager"
+        processorArchitecture="amd64"
+        publicKeyToken="31bf3856ad364e35"
+        versionScope="nonSxS"
+        >
+      <SanPolicy>4</SanPolicy>
+    </component>
+  </settings>
+</unattend>
+"@
+
+Add-content -path "$OSDrive`:\san-policy.xml" -Value $SanpolicyXML
+
+Use-WindowsUnattend –unattendpath "$OSDrive`:\san-policy.xml" –path "$OSdrive`:\" | Out-Null
+}
+
 function New-Unattend
 {
     [CmdletBinding()]
@@ -102,25 +148,29 @@ function New-Unattend
                    ValueFromPipelineByPropertyName=$true,
                    Position=4)]
         [string]$AdminPassword='P@ssw0rd',
-        [Parameter(Mandatory=$true,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=5)]
-        [switch]$Domain,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=6)]
+                   Position=5)]
+        [switch]$JoinDomain,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=6,
+                   ParameterSetName='Domain')]
         [string]$DomainName,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=7)]
+                   Position=7,
+                   ParameterSetName='Domain')]
         [string]$DomainAccount,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=8)]
+                   Position=8,
+                   ParameterSetName='Domain')]
         [string]$DomainPassword,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=9)]
+                   Position=9,
+                   ParameterSetName='Domain')]
         [string]$DomainOU
                 
      )
@@ -137,7 +187,7 @@ $UnattendXML=@"
         </component>
 "@
 
-If($Domain)
+If($JoinDomain)
 {
 $UnattendXML=$UnattendXML+@"
     
@@ -292,20 +342,29 @@ function New-NanoServer
         [switch]$JoinDomain,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=6)]
+                   Position=6,
+                   ParameterSetName='Domain')]
         [string]$DomainName,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=7)]
+                   Position=7,
+                   ParameterSetName='Domain')]
         [string]$DomainAccount,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=8)]
+                   Position=8,
+                   ParameterSetName='Domain')]
         [string]$DomainPassword,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=9)]
+                   Position=9,
+                   ParameterSetName='Domain')]
         [string]$DomainOU,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=10,
+                   ParameterSetName='Domain')]
+        [string]$Wimfile,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    ParameterSetName='VirtualDisk')]
@@ -329,8 +388,25 @@ function New-NanoServer
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    ParameterSetName='VirtualDisk')]
-        [int64]$MemoryStartup=512MB
-                
+        [int64]$MemoryStartup=512MB,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$SystemDrive='Y',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$OSDrive='Z',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$NanoDrive,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $Disk,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $SetupComplete,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $DriverPath
      )
 
     Begin
@@ -340,17 +416,17 @@ function New-NanoServer
     Process
     {
 
-        $SystemDrive='Y'
-        $OSDrive='Z'
-
-        $Wimfile='C:\NanoServer\NanoServer.Wim'
-        
         If ($Virtual)
         {
         $Disk=New-VirtualDisk -Vhd $Vhd -Size $Size
         
         Clear-DiskStructure -Disk $Disk
         New-VirtualPartitionStructure -Disk $Disk -SystemDrive $SystemDrive -OSDrive $OSDrive
+        }
+        Else
+        {
+        Clear-DiskStructure -Disk $Disk
+        New-PhysicalPartitionStructure -Disk $disk -SystemDrive -OSDrive $OSDrive
         }
         Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
         
@@ -360,14 +436,22 @@ function New-NanoServer
         
         Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
 
-        Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab -Path "$OSDrive`:\"
-        Add-WindowsDriver -Driver c:\NanoServer\Drivers -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
+        
+        If ($DriverPath -ne $NULL)
+        {
+        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        }
 
         New-Item -Path "$OSDrive`:\Windows\Setup\Scripts" -Force -ItemType File
-        Copy-item -Path C:\NanoServer\SetupComplete.cmd -Destination "$OSDrive`:\Windows\Setup\Scripts" -Force -ErrorAction SilentlyContinue
+        New-Item -Path "$OSDrive`:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File
         
         If($Virtual)
             {
@@ -375,6 +459,103 @@ function New-NanoServer
         
             New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $Nanovhd
             }
+        }
+End
+        {
+        }
+}
+function New-WindowToGo
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        [string]$Computername,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=1)]
+        [string]$Timezone='Eastern Standard Time',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=2)]
+        [string]$Owner='Nano Owner',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=3)]
+        [string]$Organization='Nano Organization',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=4)]
+        [string]$AdminPassword='P@ssw0rd',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=5)]
+        [switch]$JoinDomain,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=6,
+                   ParameterSetName='Domain')]
+        [string]$DomainName,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=7,
+                   ParameterSetName='Domain')]
+        [string]$DomainAccount,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=8,
+                   ParameterSetName='Domain')]
+        [string]$DomainPassword,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=9,
+                   ParameterSetName='Domain')]
+        [string]$DomainOU,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=10,
+                   ParameterSetName='Domain')]
+        [string]$Wimfile,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$SystemDrive='Y',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$OSDrive='Z',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $Disk,     
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $DriverPath
+        )
+
+    Begin
+    {
+    }
+ 
+    Process
+    {
+
+        Clear-DiskStructure -Disk $Disk
+        New-PhysicalPartitionStructure -Disk $disk -SystemDrive -OSDrive $OSDrive
+        Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
+        
+        Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
+        
+        Send-SanPolicy -OSDrive $OSDrive
+        
+        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -Domain $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
+        
+        Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
+
+        If ($DriverPath -ne $NULL)
+        {
+        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        }
+
         }
 End
         {
