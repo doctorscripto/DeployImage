@@ -1,4 +1,4 @@
-function Wipe-Disk
+function Clear-DiskStructure
 {
 [CmdletBinding()]
     Param
@@ -13,7 +13,7 @@ Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$fal
 Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM
 }
 
-function Create-PhysicalPartitionStructure
+function New-PhysicalPartitionStructure
 {
 [CmdletBinding()]
     Param
@@ -33,7 +33,7 @@ function Create-PhysicalPartitionStructure
                 
      )
 
-Wipe-Disk $Disk
+Clear-DiskStructure $Disk
 
 Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
 
@@ -49,7 +49,7 @@ $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remai
 $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
-function Create-VirtualPartitionStructure
+function New-VirtualPartitionStructure
 {
 [CmdletBinding()]
     Param
@@ -69,7 +69,7 @@ function Create-VirtualPartitionStructure
                 
      )
 
-Wipe-Disk $Disk
+Clear-DiskStructure $Disk
 
 Initialize-Disk -Number $Disk.Number -PartitionStyle MBR
 
@@ -77,7 +77,7 @@ $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive; # S
 $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
-function Create-Unattend
+function New-Unattend
 {
     [CmdletBinding()]
     Param
@@ -191,7 +191,7 @@ Return $UnattendXML
 
 }
 
-Function Apply-Unattend
+Function Send-Unattend
 {
     [CmdletBinding()]
     Param
@@ -214,7 +214,7 @@ Function Apply-Unattend
         Remove-item -Path $Filename -force -ErrorAction SilentlyContinue
 
 }
-function Apply-BootCode
+function Send-BootCode
 {
     [CmdletBinding()]
     Param
@@ -307,7 +307,7 @@ function New-NanoServer
         {
         New-VHD -Path $Nanovhd -SizeBytes 20GB -Dynamic
         Mount-VHD -Path $Nanovhd
-        $Disk=Get-Vhd -Path $Nanovhd | Get-Disk
+       $Disk=Get-Vhd -Path $Nanovhd | Get-Disk
         Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$false -ea SilentlyContinue
         Clear-Disk –Number ($Disk.number) -RemoveData -RemoveOEM -confirm:$False -ea SilentlyContinue
         Initialize-Disk –Number ($Disk.Number) -PartitionStyle MBR
@@ -317,11 +317,11 @@ function New-NanoServer
         }
         Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
         
-        Apply-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
+        Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
         
-        $UnattendXML=Create-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -Domain $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
+        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -Domain $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
         
-        Apply-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
+        Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
 
         Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab -Path "$OSDrive`:\"
         Add-WindowsPackage -PackagePath C:\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab -Path "$OSDrive`:\"
@@ -342,3 +342,4 @@ function New-NanoServer
         {
         }
 }
+Export-ModuleMember -Function *
