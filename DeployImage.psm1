@@ -33,20 +33,20 @@ function New-PhysicalPartitionStructure
                 
      )
 
-Clear-DiskStructure $Disk
+    Clear-DiskStructure $Disk
 
-Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
+    Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
 
-$Partition=New-Partition -DiskNumber $Disk.Number -Size 128MB ; # Create Microsoft Basic Partition
-$Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'MSR'
-$Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
+    $Partition=New-Partition -DiskNumber $Disk.Number -Size 128MB ; # Create Microsoft Basic Partition
+    $Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'MSR'
+    $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
-$Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -isactive; # Create Microsoft Basic Partition and Set System as bootable
-$Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'System' -DriveLetter $SystemDrive
-$Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '"{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -isactive; # Create Microsoft Basic Partition and Set System as bootable
+    $Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'System' -DriveLetter $SystemDrive
+    $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '"{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 
-$Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remaining Disk space for Operating System
-$Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
+    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remaining Disk space for Operating System
+    $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
 function New-VirtualPartitionStructure
@@ -71,10 +71,10 @@ function New-VirtualPartitionStructure
 
 Clear-DiskStructure $Disk
 
-Initialize-Disk -Number $Disk.Number -PartitionStyle MBR
+    Initialize-Disk -Number $Disk.Number -PartitionStyle MBR
 
-$Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive; # Single Partition for System and Operating System
-$Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
+    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive; # Single Partition for System and Operating System
+    $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
 function New-Unattend
@@ -231,6 +231,26 @@ function Send-BootCode
     & "$($env:windir)\system32\bcdboot" "$SystemDrive`:\Windows" /s "$OSDrive`:"  /f ALL
 }
 
+function New-VirtualDisk
+{
+[CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        [System.String]$Vhd,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=1)]
+        [System.Int64]$Size
+    )
+            New-VHD -Path $Vhd -SizeBytes $Size -Dynamic
+        Mount-VHD -Path $vhd
+       $Disk=Get-Vhd -Path $Vhd | Get-Disk
+       Return $Disk
+}
+
 <#
 .Synopsis
    Create a new Nano Server VM
@@ -286,9 +306,31 @@ function New-NanoServer
                    ValueFromPipelineByPropertyName=$true,
                    Position=9)]
         [string]$DomainOU,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
         [switch]$Virtual,
-        [switch]$Domain
-        
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
+        [switch]$Domain,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
+        [string]$Vhd,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
+        [int64]$Size=20GB,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
+        [string]$Switchname='Internal',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='VirtualDisk')]
+        [int64]$MemoryStartup=512MB
+                
      )
 
     Begin
@@ -300,20 +342,15 @@ function New-NanoServer
 
         $SystemDrive='Y'
         $OSDrive='Z'
-        $Wimfile='C:\NanoServer\NanoServer.Wim'
-        $NanoVHD="C:\Nanoserver\$Computername.vhd"
 
+        $Wimfile='C:\NanoServer\NanoServer.Wim'
+        
         If ($Virtual)
         {
-        New-VHD -Path $Nanovhd -SizeBytes 20GB -Dynamic
-        Mount-VHD -Path $Nanovhd
-       $Disk=Get-Vhd -Path $Nanovhd | Get-Disk
-        Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$false -ea SilentlyContinue
-        Clear-Disk –Number ($Disk.number) -RemoveData -RemoveOEM -confirm:$False -ea SilentlyContinue
-        Initialize-Disk –Number ($Disk.Number) -PartitionStyle MBR
-        $OSPartition = New-Partition –InputObject $Disk -UseMaximumSize -IsActive
-        Format-Volume -NewFileSystemLabel "Windows" -FileSystem NTFS -Partition $OSPartition -confirm:$False
-        Set-Partition -InputObject $OSPartition -NewDriveLetter $OSDrive
+        $Disk=New-VirtualDisk -Vhd $Vhd -Size $Size
+        
+        Clear-DiskStructure -Disk $Disk
+        New-VirtualPartitionStructure -Disk $Disk -SystemDrive $SystemDrive -OSDrive $OSDrive
         }
         Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
         
@@ -331,14 +368,15 @@ function New-NanoServer
 
         New-Item -Path "$OSDrive`:\Windows\Setup\Scripts" -Force -ItemType File
         Copy-item -Path C:\NanoServer\SetupComplete.cmd -Destination "$OSDrive`:\Windows\Setup\Scripts" -Force -ErrorAction SilentlyContinue
-        Dismount-VHD -Path $nanovhd
-
-        $Switchname='Internal'
-        $MemoryStartup=512mb
-
-        New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $Nanovhd
+        
+        If($Virtual)
+            {
+            Dismount-VHD -Path $nanovhd
+        
+            New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $Nanovhd
+            }
         }
-    End
+End
         {
         }
 }
