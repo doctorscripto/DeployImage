@@ -10,7 +10,7 @@ function Clear-DiskStructure
         
     )
 Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$false -erroraction SilentlyContinue
-Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM
+Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM -confirm:$false -ErrorAction SilentlyContinue
 }
 
 function New-PhysicalPartitionStructure
@@ -22,11 +22,11 @@ function New-PhysicalPartitionStructure
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         $Disk,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
         [string]$SystemDrive='S',
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
         [string]$OSDrive='W'
@@ -38,15 +38,15 @@ function New-PhysicalPartitionStructure
     Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 128MB ; # Create Microsoft Basic Partition
-    $Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'MSR'
+    Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
     $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -isactive; # Create Microsoft Basic Partition and Set System as bootable
-    $Partition | Format-Volume -FileSystem Fat32 -NewFileSystemLabel 'System' -DriveLetter $SystemDrive
+    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'System' -DriveLetter $SystemDrive
     $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '"{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 
     $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remaining Disk space for Operating System
-    $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
+    Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
 }
 
 function New-VirtualPartitionStructure
@@ -58,23 +58,23 @@ function New-VirtualPartitionStructure
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         $Disk,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
         [string]$SystemDrive='S',
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
         [string]$OSDrive='W'
                 
      )
 
-Clear-DiskStructure $Disk
+    Clear-DiskStructure $Disk
 
     Initialize-Disk -Number $Disk.Number -PartitionStyle MBR
 
     $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive; # Single Partition for System and Operating System
-    $Partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
+    Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel 'Windows' 
 }
 
 Function Send-SanPolicy
@@ -281,7 +281,7 @@ function Send-BootCode
     & "$($env:windir)\system32\bcdboot" "$SystemDrive`:\Windows" /s "$OSDrive`:"  /f ALL
 }
 
-function New-VirtualDisk
+function New-VirtualDiskForImage
 {
 [CmdletBinding()]
     Param
@@ -290,13 +290,13 @@ function New-VirtualDisk
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         [System.String]$Vhd,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$False,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
-        [System.Int64]$Size
+        [System.Int64]$Size=20GB
     )
-            New-VHD -Path $Vhd -SizeBytes $Size -Dynamic
-        Mount-VHD -Path $vhd
+       New-VHD -Path $Vhd -SizeBytes $Size -Dynamic | Out-Null
+       Mount-VHD -Path $vhd | Out-Null
        $Disk=Get-Vhd -Path $Vhd | Get-Disk
        Return $Disk
 }
@@ -336,7 +336,7 @@ function New-NanoServer
                    ValueFromPipelineByPropertyName=$true,
                    Position=4)]
         [string]$AdminPassword='P@ssw0rd',
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=5)]
         [switch]$JoinDomain,
@@ -362,8 +362,7 @@ function New-NanoServer
         [string]$DomainOU,
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=10,
-                   ParameterSetName='Domain')]
+                   Position=10)]
         [string]$Wimfile,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
@@ -389,22 +388,22 @@ function New-NanoServer
                    ValueFromPipelineByPropertyName=$true,
                    ParameterSetName='VirtualDisk')]
         [int64]$MemoryStartup=512MB,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         [string]$SystemDrive='Y',
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         [string]$OSDrive='Z',
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true)]
         [string]$NanoDrive,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         $Disk,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         $SetupComplete,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         $DriverPath
      )
@@ -418,7 +417,7 @@ function New-NanoServer
 
         If ($Virtual)
         {
-        $Disk=New-VirtualDisk -Vhd $Vhd -Size $Size
+        $Disk=New-VirtualDiskForImage -Vhd $Vhd -Size $Size
         
         Clear-DiskStructure -Disk $Disk
         New-VirtualPartitionStructure -Disk $Disk -SystemDrive $SystemDrive -OSDrive $OSDrive
