@@ -25,11 +25,11 @@ function New-PhysicalPartitionStructure
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
-        [string]$SystemDrive='S',
+        [string]$SystemDrive,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
-        [string]$OSDrive='W'
+        [string]$OSDrive
                 
      )
 
@@ -39,14 +39,14 @@ function New-PhysicalPartitionStructure
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 128MB ; # Create Microsoft Basic Partition
     Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
-    $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
+    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
-    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -isactive; # Create Microsoft Basic Partition and Set System as bootable
-    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'System' -DriveLetter $SystemDrive
-    $Partition | Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '"{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $SystemDrive ; # Create Microsoft Basic Partition and Set System as bootable
+    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'System'
+    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 
-    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remaining Disk space for Operating System
-    Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows' -DriveLetter $OSDrive
+    $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
+    Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
 }
 
 function New-VirtualPartitionStructure
@@ -61,19 +61,14 @@ function New-VirtualPartitionStructure
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
-        [string]$SystemDrive='S',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=2)]
-        [string]$OSDrive='W'
+        [string]$OSDrive
                 
      )
 
     Clear-DiskStructure $Disk
 
     Initialize-Disk -Number $Disk.Number -PartitionStyle MBR
-
-    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive; # Single Partition for System and Operating System
+    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive -DriveLetter $OSDrive; # Single Partition for System and Operating System
     Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel 'Windows' 
 }
 
@@ -260,7 +255,7 @@ Function Send-Unattend
         Remove-item -Path $Filename -force -ErrorAction SilentlyContinue
         New-Item -ItemType File -Path $Filename
         Add-Content -Path $Filename -Value $UnattendData
-        Copy-Item -Path "$filename" -Destination "$OSDrive`:\Windows\System32\Sysprep\unattend.xml"
+        Copy-Item -Path $filename -Destination "$OSDrive`:\Windows\System32\Sysprep\unattend.xml"
         Remove-item -Path $Filename -force -ErrorAction SilentlyContinue
 
 }
@@ -420,43 +415,58 @@ function New-NanoServer
         $Disk=New-VirtualDiskForImage -Vhd $Vhd -Size $Size
         
         Clear-DiskStructure -Disk $Disk
-        New-VirtualPartitionStructure -Disk $Disk -SystemDrive $SystemDrive -OSDrive $OSDrive
+        New-VirtualPartitionStructure -Disk $Disk -OSDrive $OSDrive
         }
         Else
         {
         Clear-DiskStructure -Disk $Disk
-        New-PhysicalPartitionStructure -Disk $disk -SystemDrive -OSDrive $OSDrive
+        New-PhysicalPartitionStructure -Disk $disk -SystemDrive $SystemDrive -OSDrive $OSDrive
         }
-        Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
         
+        Expand-WindowsImage –imagepath "$($NanoDrive)\NanoServer\$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
+        
+        If ($Virtual)
+        {
+        Send-BootCode -SystemDrive $OSDrive -OSDrive $OSDrive
+        }
+        Else
+        {
         Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
-        
-        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -Domain $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
-        
+        }
+
+        If ($JoinDomain)
+        {
+        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -JoinDomain -Domainname $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
+        }
+        Else
+        {
+        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword
+        }
+
         Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
 
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$(NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
         
         If ($DriverPath -ne $NULL)
         {
         Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
         }
 
-        New-Item -Path "$OSDrive`:\Windows\Setup\Scripts" -Force -ItemType File
+        New-Item -Path "$OSDrive`:\Windows\Setup\Scripts" -Force -ItemType Directory
         New-Item -Path "$OSDrive`:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File
         
         If($Virtual)
             {
-            Dismount-VHD -Path $nanovhd
+            Dismount-VHD -Path $vhd
         
-            New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $Nanovhd
+            New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $vhd
             }
         }
 End
