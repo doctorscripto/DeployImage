@@ -1,3 +1,28 @@
+function Test-WindowsADK
+{
+Test-Path 'C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment' -or 'C:\Program Files\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment'
+}
+
+function Get-Architecture
+{
+$Arch=(Get-CimInstance win32_operatingsystem).OSArchitecture
+if ($Arch='32-Bit')
+    {
+    Return [string]' (x86)'
+    }
+
+}
+
+function Get-USBDisk
+{
+Get-Disk | Where { $_.BusType -eq 'USB' } | Out-GridView -PassThru
+}
+
+function Get-InternalDisk
+{
+Get-Disk | Where { $_.BusType -eq 'SATA' -or $_.BusType -eq 'SCSI' } | Out-GridView -PassThru
+}
+
 function Clear-DiskStructure
 {
 [CmdletBinding()]
@@ -46,6 +71,30 @@ function New-PhysicalPartitionStructure
     Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
+    Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
+}
+
+function New-USBPartitionStructure
+{
+[CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $Disk,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=1)]
+        [string]$OSDrive
+                
+     )
+
+    Clear-DiskStructure $Disk
+
+    Initialize-Disk -Number $Disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
+
+    $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive ; # Take remaining Disk space for Operating System
     Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
 }
 
@@ -414,16 +463,14 @@ function New-NanoServer
         {
         $Disk=New-VirtualDiskForImage -Vhd $Vhd -Size $Size
         
-        Clear-DiskStructure -Disk $Disk
         New-VirtualPartitionStructure -Disk $Disk -OSDrive $OSDrive
         }
         Else
         {
-        Clear-DiskStructure -Disk $Disk
         New-PhysicalPartitionStructure -Disk $disk -SystemDrive $SystemDrive -OSDrive $OSDrive
         }
         
-        Expand-WindowsImage –imagepath "$($NanoDrive)\NanoServer\$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
+        Expand-WindowsImage –imagepath "$($NanoDrive)\NanoServer\$wimfile" –index 1 –ApplyPath "$OSDrive`:\" -LogPath "$($Env:temp)\Dism$((Get-Date -Format 'MMddyyyyhhmmssmm').tostring()).log"
         
         If ($Virtual)
         {
@@ -548,9 +595,8 @@ function New-WindowToGo
     Process
     {
 
-        Clear-DiskStructure -Disk $Disk
         New-PhysicalPartitionStructure -Disk $disk -SystemDrive -OSDrive $OSDrive
-        Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
+        Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\" -LogPath "$($Env:temp)\Dism$((Get-Date -Format 'MMddyyyyhhmmssmm').tostring()).log"
         
         Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
         
@@ -559,6 +605,67 @@ function New-WindowToGo
         $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -Domain $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
         
         Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
+
+        If ($DriverPath -ne $NULL)
+        {
+        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        }
+
+        }
+End
+        {
+        }
+}
+function New-WindowsPE
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=1)]
+        [string]$Wimfile='winpe.wim',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$OSDrive='Z',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$WinPEDrive='C:',
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        $Disk,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        $DriverPath
+     )
+
+    Begin
+    {
+    }
+ 
+    Process
+    {
+        $WinADK="$($WinPEDrive)\Program Files$(Get-Architecture)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64"
+
+        New-USBPartitionStructure -Disk $disk -OSDrive $OSDrive
+
+        Expand-WindowsImage –imagepath "$($WinAdk)\en-us\$wimfile" –index 1 –ApplyPath "$OSDrive`:\" -LogPath "$($Env:temp)\Dism$((Get-Date -Format 'MMddyyyyhhmmssmm').tostring()).log" 
+        
+        Send-BootCode -SystemDrive $OSDrive -OSDrive $OSDrive
+
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-DismCmdlets.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-EnhancedStorage.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-NetFx.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-PowerShell.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-StorageWMI.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-WMI.cab" -Path "$OSDrive`:\"
+
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-DismCmdlets_en-us.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-NetFx_en-us.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-PowerShell_en-us.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-StorageWMI_en-us.cab" -Path "$OSDrive`:\"
+        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-WMI_en-us.cab" -Path "$OSDrive`:\"
 
         If ($DriverPath -ne $NULL)
         {
