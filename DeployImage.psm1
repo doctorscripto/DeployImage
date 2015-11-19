@@ -96,6 +96,8 @@ function New-USBPartitionStructure
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive ; # Take remaining Disk space for Operating System
     Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
+    bootsect.exe /NT60 G:
+
 }
 
 function New-VirtualPartitionStructure
@@ -323,6 +325,19 @@ function Send-BootCode
         [string]$OSDrive
     )
     & "$($env:windir)\system32\bcdboot" "$SystemDrive`:\Windows" /s "$OSDrive`:"  /f ALL
+}
+
+function Send-USBBootCode
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        [string]$OSDrive
+    )
+    & "$($env:windir)\system32\bootsect.exe" /nt60 "$OSDrive`:"
 }
 
 function New-VirtualDiskForImage
@@ -636,7 +651,11 @@ function New-WindowsPE
         $Disk,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
-        $DriverPath
+        $DriverPath,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        $WinPETemp='C:\PETemp'
+
      )
 
     Begin
@@ -645,27 +664,44 @@ function New-WindowsPE
  
     Process
     {
-        $WinADK="$($WinPEDrive)\Program Files$(Get-Architecture)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64"
+        $Env:WinPERoot="$($WinPEDrive)\Program Files$(Get-Architecture)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment" 
 
-        New-USBPartitionStructure -Disk $disk -OSDrive $OSDrive
+        $WinADK="$($Env:WinPERoot)\amd64"
 
-        Expand-WindowsImage –imagepath "$($WinAdk)\en-us\$wimfile" –index 1 –ApplyPath "$OSDrive`:\" -LogPath "$($Env:temp)\Dism$((Get-Date -Format 'MMddyyyyhhmmssmm').tostring()).log" 
+        Remove-item -Path $WinPETemp -Recurse -Force
         
-        Send-BootCode -SystemDrive $OSDrive -OSDrive $OSDrive
+        New-Item -ItemType Directory -Path $WinPETemp -Force
+                
+        Copy-Item -Path "$WinAdk\Media" -Destination $WinPETemp -Recurse -Force
 
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-DismCmdlets.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-EnhancedStorage.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-NetFx.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-PowerShell.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-StorageWMI.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\WinPE-WMI.cab" -Path "$OSDrive`:\"
+        New-Item -ItemType Directory -Path "$WinPETemp\Media\Source" -Force
+        
+        Copy-Item -path "$WinAdk\en-us\$Wimfile" -Destination "$WinPETemp\Media\Source\boot.wim"
+        
+        # New-USBPartitionStructure -Disk $disk -OSDrive $OSDrive
 
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-DismCmdlets_en-us.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-NetFx_en-us.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-PowerShell_en-us.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-StorageWMI_en-us.cab" -Path "$OSDrive`:\"
-        #Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\Packages\en-us\WinPE-WMI_en-us.cab" -Path "$OSDrive`:\"
+        New-Item -ItemType Directory -Path "$WinPETemp\Mount" -Force
+
+        Mount-WindowsImage -ImagePath "$WinPETemp\Media\Source\boot.wim" -Index 1 -path "$WinPETemp\Mount"
+        
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-DismCmdlets.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-EnhancedStorage.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-NetFx.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-PowerShell.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-StorageWMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-WMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-DismCmdlets_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-NetFx_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-PowerShell_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-WMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+
+        Dismount-WindowsImage -path $WinPETemp\Mount -Save
+
+        Copy-Item -Path $WinPETemp -destination "$OsDrive`:" -Recurse
+        
+        Send-USBBootCode -OSDrive $OSDrive
 
         If ($DriverPath -ne $NULL)
         {
