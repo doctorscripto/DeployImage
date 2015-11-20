@@ -700,7 +700,8 @@ function New-WindowsPE
         
         Dismount-WindowsImage -path "$WinPETemp\Mount" -Save
 
-        Copy-Item -Path "$WinPETemp\Media\*" -destination "$OsDrive`:\" -Recurse
+        $WinPEKey="$OsDrive`:\"
+	Copy-Item -Path "$WinPETemp\Media\*" -destination $WinPeKey -Recurse
         
         Send-USBBootCode -OSDrive $OSDrive
 
