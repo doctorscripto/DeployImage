@@ -1,7 +1,11 @@
-function Test-WindowsADK
-{
-Test-Path 'C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment' -or 'C:\Program Files\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment'
-}
+<#
+.Synopsis
+   Identifies if the Operating System is 32bit or 64bit 
+.DESCRIPTION
+   If the Operating system is 64bit, it will return the string " (x86)" to append to a "Program Files" path
+.EXAMPLE
+   $Folder="C:\Program Files$(Get-Architecture)"
+#>
 
 function Get-Architecture
 {
@@ -13,6 +17,26 @@ if ($Arch='32-Bit')
 
 }
 
+<#
+.Synopsis
+   Tests for the existence of the Windows 10 ADK
+.DESCRIPTION
+   This Cmdlet will return a Boolean True if the Windows 10 ADK is installed.  It depends upon the Get-Architecture Cmdlet supplied within this module
+.EXAMPLE
+   $AdkInstalled = Test-WindowsADK
+.EXAMPLE
+   If (Test-WindowsADK -eq $TRUE)
+    {
+        Write-Output 'Windows 10 ADK is installed'
+    }
+
+#>
+
+function Test-WindowsADK
+{
+(Test-Path "C:\Program Files$(Get-Architecture)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
+}
+
 function Get-USBDisk
 {
 Get-Disk | Where { $_.BusType -eq 'USB' } | Out-GridView -PassThru
@@ -22,6 +46,27 @@ function Get-InternalDisk
 {
 Get-Disk | Where { $_.BusType -eq 'SATA' -or $_.BusType -eq 'SCSI' } | Out-GridView -PassThru
 }
+
+<#
+.Synopsis
+   Erase the Partition structure on a Disk
+.DESCRIPTION
+   When provided with a Disk object from "Get-Disk" it will target and cleanly remove all partitions.  It addresses some of the limitations found with the Clear-Disk Cmdlet.
+.EXAMPLE
+   Erase partition structure on Disk Number 1
+   
+   $Disk=Get-Disk -Number 1
+   Clear-DiskStructure -Disk $disk
+.EXAMPLE
+   Erase partition structure on all USB attached disks
+   
+   $DiskList=Get-Disk | Where { $_.BusType -eq 'USB'}
+   Foreach ( $Disk in $Disklist )
+   {
+   Clear-DiskStructure -Disk $Disk
+   }
+
+#>
 
 function Clear-DiskStructure
 {
@@ -37,6 +82,19 @@ function Clear-DiskStructure
 Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$false -erroraction SilentlyContinue
 Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM -confirm:$false -ErrorAction SilentlyContinue
 }
+
+<#
+.Synopsis
+   Create a UEFI Partition structure
+.DESCRIPTION
+   Creates a UEFI Partition structure when provided with a target disk from the GET-Disk Cmdlet including formatting and assigning drive letters.
+.EXAMPLE
+   Create a UEFI Partition structure on Disk 0, assign Drive Z: to the System Drive and Drive Y: to the OSDrive
+
+   $Disk=Get-Disk -number 0
+   New-PhysicalPartitionStructure -Disk $Disk -SystemDrive Z -OSDrive Y
+   
+#>
 
 function New-PhysicalPartitionStructure
 {
@@ -74,6 +132,18 @@ function New-PhysicalPartitionStructure
     Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
 }
 
+<#
+.Synopsis
+   Create a simple partition structure for a USB key
+.DESCRIPTION
+   Create a simple partition structure for a USB key when provided with a target disk from the GET-Disk Cmdlet including formatting and assigning drive letters.
+.EXAMPLE
+   Create a simple partition structure for a USB key, assign Drive Y: to the OSDrive
+
+   $Disk=Get-Disk -number 1
+   New-PhysicalPartitionStructure -Disk $Disk -SystemDrive Z -OSDrive Y
+   
+#>
 function New-USBPartitionStructure
 {
 [CmdletBinding()]
@@ -92,13 +162,27 @@ function New-USBPartitionStructure
 
     Clear-DiskStructure $Disk
 
-    Initialize-Disk -Number $Disk.Number -ErrorAction SilentlyContinue
+    Initialize-Disk -Number $Disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive ; # Take remaining Disk space for Operating System
     Format-Volume -Partition $Partition  -FileSystem FAT32 -NewFileSystemLabel 'Windows'
     
 }
 
+<#
+.Synopsis
+   Create a simple partition structure for a Virtual Disk
+.DESCRIPTION
+   Create a simple partition structure for a Virtual Disk when provided with a target disk from the GET-Disk Cmdlet including formatting and assigning drive letters.
+.EXAMPLE
+   Create a simple partition structure for a Virtual Disk, assign Drive Y: to the OSDrive
+
+   Mount-VHD C:\VM\File.VHD
+   $Disk=Get-Vhd C:\VM\File.VHD | Get-Disk
+   $Disk=Get-Disk -number 1
+   New-PhysicalPartitionStructure -Disk $Disk -SystemDrive Z -OSDrive Y
+   
+#>
 function New-VirtualPartitionStructure
 {
 [CmdletBinding()]
@@ -121,6 +205,17 @@ function New-VirtualPartitionStructure
     $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -isactive -DriveLetter $OSDrive; # Single Partition for System and Operating System
     Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel 'Windows' 
 }
+
+<#
+.Synopsis
+   Set San Policy for a Windows To Go key
+.DESCRIPTION
+   Creates and injects the necessary Disk policy which protects Windows to Go from Internal Drives.  Requires the drive letter of the target OSDrive.
+.EXAMPLE
+   Set Windows To Go key on Drive L with the proper San Policy
+
+   Send-SanPolicy -OSDrive L
+#>
 
 Function Send-SanPolicy
 {
@@ -309,6 +404,7 @@ Function Send-Unattend
         Remove-item -Path $Filename -force -ErrorAction SilentlyContinue
 
 }
+
 function Send-BootCode
 {
     [CmdletBinding()]
@@ -369,101 +465,21 @@ function New-VirtualDiskForImage
 
    Creates a new Virtual Machine in Hyper-V which is running a Nano Server named 'NanoServer1'
 #>
-function New-NanoServer
+function New-NanoServerWIM
 {
     [CmdletBinding()]
     Param
     (
         [Parameter(Mandatory=$true,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=0)]
-        [string]$Computername,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=1)]
-        [string]$Timezone='Eastern Standard Time',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=2)]
-        [string]$Owner='Nano Owner',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=3)]
-        [string]$Organization='Nano Organization',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=4)]
-        [string]$AdminPassword='P@ssw0rd',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=5)]
-        [switch]$JoinDomain,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=6,
-                   ParameterSetName='Domain')]
-        [string]$DomainName,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=7,
-                   ParameterSetName='Domain')]
-        [string]$DomainAccount,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=8,
-                   ParameterSetName='Domain')]
-        [string]$DomainPassword,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=9,
-                   ParameterSetName='Domain')]
-        [string]$DomainOU,
-        [Parameter(Mandatory=$true,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=10)]
-        [string]$Wimfile,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [switch]$Virtual,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [switch]$Domain,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [string]$Vhd,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [int64]$Size=20GB,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [string]$Switchname='Internal',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   ParameterSetName='VirtualDisk')]
-        [int64]$MemoryStartup=512MB,
-        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
-        [string]$SystemDrive='Y',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true)]
-        [string]$OSDrive='Z',
-        [Parameter(Mandatory=$true,
-                   ValueFromPipelineByPropertyName=$true)]
-        [string]$NanoDrive,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true)]
-        $Disk,
+        [string]$NanoDrive='C',
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         $SetupComplete,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
-        $DriverPath
+        $Destination='.\NanoTemp'
+
      )
 
     Begin
@@ -472,69 +488,36 @@ function New-NanoServer
  
     Process
     {
+        $NanoDrive='C'
+        $Destination='.\NanoTemp'
 
-        If ($Virtual)
-        {
-        $Disk=New-VirtualDiskForImage -Vhd $Vhd -Size $Size
-        
-        New-VirtualPartitionStructure -Disk $Disk -OSDrive $OSDrive
-        }
-        Else
-        {
-        New-PhysicalPartitionStructure -Disk $disk -SystemDrive $SystemDrive -OSDrive $OSDrive
-        }
-        
-        Expand-WindowsImage –imagepath "$($NanoDrive)\NanoServer\$wimfile" –index 1 –ApplyPath "$OSDrive`:\" -LogPath "$($Env:temp)\Dism$((Get-Date -Format 'MMddyyyyhhmmssmm').tostring()).log"
-        
-        If ($Virtual)
-        {
-        Send-BootCode -SystemDrive $OSDrive -OSDrive $OSDrive
-        }
-        Else
-        {
-        Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
-        }
+        $NanoDrive="$NanoDrive`:"
+        Remove-Item $Destination -Force -Recurse -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $Destination -Force
+        New-Item -ItemType Directory -Path "$Destination\Mount" -Force
 
-        If ($JoinDomain)
-        {
-        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword -JoinDomain -Domainname $DomainName -DomainAccount $DomainAccount -DomainPassword $DomainPassword -DomainOU $DomainOU
-        }
-        Else
-        {
-        $UnattendXML=New-Unattend -Computername $computername -Timezone $Timezone -Owner $Owner -Organization $Organization -AdminPassword $AdminPassword
-        }
-
-        Send-Unattend -OSDrive $OSDrive -UnattendData $UnattendXML
-
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$OSDrive`:\"
-        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$OSDrive`:\"
+        Copy-Item -Path "$NanoDrive\NanoServer\Nanoserver.wim" -Destination $Destination
+        Set-ItemProperty "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False
         
-        If ($DriverPath -ne $NULL)
-        {
-        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
-        }
-
-        New-Item -Path "$OSDrive`:\Windows\Setup\Scripts" -Force -ItemType Directory
-        New-Item -Path "$OSDrive`:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File
+        Mount-WindowsImage -ImagePath "$Destination\Mount\Nanoserver.wim" -Index 1 -path "$Destination\Mount"
         
-        If($Virtual)
-            {
-            Dismount-VHD -Path $vhd
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\"
+        Add-WindowsPackage -PackagePath "$($NanoDrive)\NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\"
         
-            New-VM -Name $Computername -MemoryStartupBytes 512mb -SwitchName $Switchname -VHDPath $vhd
-            }
-        }
+        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts" -Force -ItemType Directory
+        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File
+    }     
 End
         {
         }
 }
-function New-WindowToGo
+
+function New-WindowsToGo
 {
     [CmdletBinding()]
     Param
@@ -675,10 +658,73 @@ function New-WindowsPE
 
         New-Item -ItemType Directory -Path "$WinPETemp\Media\Sources" -Force
         
-        Copy-Item -path "$WinAdk\en-us\$Wimfile" -Destination "$WinPETemp\Media\Sources\boot.wim"
+        Copy-Item -path "$WinAdk\en-us\winpe.wim" -Destination "$WinPETemp\Media\Sources\boot.wim"
+        
+        if ($Wimfile -ne '')
+        {
+        Copy-Item -Path $Wimfile -Destination "$WinPETemp\Media\Sources\boot.wim"
+        }
         
         New-USBPartitionStructure -Disk $disk -OSDrive $OSDrive
 
+        $WinPEKey=$OsDrive+':'
+	    Copy-Item -Path "$WinPETemp\Media\*" -destination "$WinPeKey\" -Recurse
+        
+        Send-USBBootCode -OSDrive $OSDrive
+
+        If ($DriverPath -ne $NULL)
+        {
+        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        }
+
+        }
+End
+        {
+        }
+}
+
+function New-WindowsPEWim
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=1)]
+        [string]$Wimfile='winpe.wim',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        [string]$WinPEDrive='C',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        $WinPETemp='C:\PETemp',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true)]
+        $Destination='.\'
+
+
+     )
+
+    Begin
+    {
+    }
+ 
+    Process
+    {
+        $Env:WinPERoot="$($WinPEDrive)`:\Program Files$(Get-Architecture)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment" 
+
+        $WinADK="$($Env:WinPERoot)\amd64"
+
+        Remove-item -Path $WinPETemp -Recurse -Force
+        
+        New-Item -ItemType Directory -Path $WinPETemp -Force
+                
+        Copy-Item -Path "$WinAdk\Media" -Destination $WinPETemp -Recurse -Force
+
+        New-Item -ItemType Directory -Path "$WinPETemp\Media\Sources" -Force
+        
+        Copy-Item -path "$WinAdk\en-us\$Wimfile" -Destination "$WinPETemp\Media\Sources\boot.wim"
+        
         New-Item -ItemType Directory -Path "$WinPETemp\Mount" -Force
 
         Mount-WindowsImage -ImagePath "$WinPETemp\Media\Sources\boot.wim" -Index 1 -path "$WinPETemp\Mount"
@@ -699,20 +745,13 @@ function New-WindowsPE
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
         
         Dismount-WindowsImage -path "$WinPETemp\Mount" -Save
-
-        $WinPEKey="$OsDrive`:\"
-	Copy-Item -Path "$WinPETemp\Media\*" -destination $WinPeKey -Recurse
         
-        Send-USBBootCode -OSDrive $OSDrive
-
-        If ($DriverPath -ne $NULL)
-        {
-        Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
+        Copy-Item -path "$WinPETemp\Media\Sources\boot.wim" -destination "$Destination\Custom.wim"
         }
-
-        }
-End
-        {
-        }
+    End
+    {
+    }
 }
+
 Export-ModuleMember -Function *
+
