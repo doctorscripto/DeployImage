@@ -1,3 +1,13 @@
+Function Remove-Drive($DriveLetter)
+{
+    Get-Volume -Drive $DriveLetter | Get-Partition | Remove-PartitionAccessPath -accesspath "$DriveLetter`:\"
+
+	Do {
+		$status=(Get-Volume -DriveLetter $DriveLetter -erroraction SilentlyContinue)
+	   }
+	until ($Status -eq $NULL)
+}
+
 <#
 .Synopsis
    Identifies if the Operating System is 32bit or 64bit 
