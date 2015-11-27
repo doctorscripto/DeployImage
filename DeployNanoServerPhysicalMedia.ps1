@@ -1,16 +1,21 @@
-﻿# New-NanoServerMedia - sample script
+﻿# New-NanoServerMedia
+$Disk=Get-AttachedDisk -USB -GUI
+$OSdrive='Z'
+$WinPETemp='C:\WindowsPE'
+$WimFile='C:\WinPECustom\Custom.wim'
+$DriverPath='C:\Dell'
+$NanoMedia='D:\'
 
-$OSdrive='L'
-$Disk=Get-USBDisk
-#New-WindowsPEWim -Destination C:\MVP
-New-WindowsPE -OSDrive L -Disk $Disk -WinPETemp 'C:\WindowsPE' -Wimfile C:\mvp\custom.wim
+New-NanoServerWIM -Mediapath $NanoMedia -Destination $NanoTemp
+New-WindowsPE -OSDrive $OSDrive -Disk $Disk -WinPETemp $WinPETemp -Wimfile $WimFile
+
 $Modulepath=Split-path ((get-module deployimage).path)
+
 $WinPEkey=$OSDrive+':'
-$NanoDrive='C'    
 
 New-Item -Path "$WinPeKey\DeployImage" -ItemType Directory -Force
 Copy-Item -Path "$ModulePath\*" -Destination "$WinPEkey\DeployImage" -Recurse
-    
+   
 If ($DriverPath -ne $NULL -and (Test-Path $DriverPath))
 {
 New-Item -Path "$WinPEKey\Drivers" -ItemType Directory -Force
@@ -18,4 +23,4 @@ Copy-Item -Path "$DriverPath\*" -Destination "$WinPEkey\Drivers" -Recurse
 }
     
 New-Item -Path "$WinPeKey\NanoServer" -ItemType Directory -Force
-Copy-Item -Path "$NanoDrive`:\NanoServer\*" -Destination "$WinPEKey\NanoServer\" -Recurse
+Copy-Item -Path "$($NanoMedia)NanoServer\*" -Destination "$WinPEKey\NanoServer\" -Recurse
