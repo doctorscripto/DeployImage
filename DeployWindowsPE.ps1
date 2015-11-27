@@ -1,10 +1,11 @@
-﻿$Wimfile='winpe.wim'
-$OSDrive='Z'
+﻿$Wimfile='C:\Pewim\custom.wim'
+$OSDrive='L'
 $WinPEDrive='C'
 $Disk
 $DriverPath='C:\Dell'
-$WinPETemp='C:\PETemp'
+$WinPETemp='C:\TempPE'
 
+$Disk=Get-AttachedDisk -USB -GUI
 $Env:WinPERoot="$($WinPEDrive)`:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment" 
 $WinADK="$($Env:WinPERoot)\amd64"
 
@@ -14,12 +15,12 @@ Copy-Item -Path "$WinAdk\Media" -Destination $WinPETemp -Recurse -Force
 New-Item -ItemType Directory -Path "$WinPETemp\Media\Sources" -Force
 Copy-Item -path "$WinAdk\en-us\winpe.wim" -Destination "$WinPETemp\Media\Sources\boot.wim"
 
-if ($Wimfile -ne '')
+if ($Wimfile -ne $NULL)
 {
 Copy-Item -Path $Wimfile -Destination "$WinPETemp\Media\Sources\boot.wim"
 }
         
-New-USBPartitionStructure -Disk $disk -OSDrive $OSDrive -USB -GUI
+New-PartitionStructure -Disk $disk -OSDrive $OSDrive -USB -MBR
 $WinPEKey=$OsDrive+':'
 
 Copy-Item -Path "$WinPETemp\Media\*" -destination "$WinPeKey\" -Recurse
@@ -32,4 +33,3 @@ If ($DriverPath -ne $NULL)
 }
 
 Remove-DriveLetter -DriveLetter $OSDrive
- 

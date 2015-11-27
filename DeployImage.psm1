@@ -77,11 +77,11 @@ If ($USB)
     }
     Else
     {
-        $DiskType='SATA','SCSI'
+        $DiskType='SATA','SCSI','RAID'
     }
 
 
-if ($GUI)
+if ($GUI -and ((Get-CimInstance Win32_OperatingSystem).OperatingSystemSKU -ne 1))
     {
         Get-Disk | Where { $DiskType -match $_.BusType } | Out-GridView -PassThru
     }
@@ -160,14 +160,10 @@ function New-PartitionStructure
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=3)]
-        [switch]$NTFS,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=4)]
         [string]$SystemDrive,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=5)]
+                   Position=4)]
         [string]$OSDrive
                 
      )
@@ -431,7 +427,7 @@ function Send-BootCode
     [CmdletBinding()]
     Param
     (
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         [string]$SystemDrive,
@@ -442,7 +438,7 @@ function Send-BootCode
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
-        [string]$USB
+        [switch]$USB
     
     )
     if ($USB)
@@ -513,7 +509,7 @@ function New-WindowsPEWim
     (
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
-        $WinPETemp='C:\PETemp',
+        $WinPETemp='C:\TempPE',
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true)]
         $Destination='C:\PeWim'
@@ -530,33 +526,39 @@ function New-WindowsPEWim
 
         $WinADK="$($Env:WinPERoot)\amd64"
 
-        Remove-item -Path $WinPETemp -Recurse -Force -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $WinPETemp -Force
-        Copy-Item -Path "$WinAdk\Media" -Destination $WinPETemp -Recurse -Force
-        New-Item -ItemType Directory -Path "$WinPETemp\Media\Sources" -Force
-        Copy-Item -path "$WinAdk\en-us\winpe.wim" -Destination "$WinPETemp\Media\Sources\boot.wim"
-        New-Item -ItemType Directory -Path "$WinPETemp\Mount" -Force
+        Remove-item -Path $WinPETemp -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        New-Item -ItemType Directory -Path $WinPETemp -Force | Out-Null
+        Copy-Item -Path "$WinAdk\Media" -Destination $WinPETemp -Recurse -Force | Out-Null
+        New-Item -ItemType Directory -Path "$WinPETemp\Media\Sources" -Force | Out-Null
+        Copy-Item -path "$WinAdk\en-us\winpe.wim" -Destination "$WinPETemp\Media\Sources\boot.wim" | Out-Null
+        New-Item -ItemType Directory -Path "$WinPETemp\Mount" -Force | Out-Null
 
-        Mount-WindowsImage -ImagePath "$WinPETemp\Media\Sources\boot.wim" -Index 1 -path "$WinPETemp\Mount"
+        Mount-WindowsImage -ImagePath "$WinPETemp\Media\Sources\boot.wim" -Index 1 -path "$WinPETemp\Mount" | Out-Null
         
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-WMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-WMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-NetFx.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-NetFx_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-Scripting.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-Scripting_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-PowerShell.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-PowerShell_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-DismCmdlets.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-DismCmdlets_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-EnhancedStorage.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-StorageWMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
-        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-WMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-WMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-NetFx.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-NetFx_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-Scripting.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-Scripting_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-PowerShell.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-PowerShell_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-DismCmdlets.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-DismCmdlets_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-EnhancedStorage.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-StorageWMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
+        Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         
-        Dismount-WindowsImage -path "$WinPETemp\Mount" -Save
+        Dismount-WindowsImage -path "$WinPETemp\Mount" -Save | Out-Null
         
-        Copy-Item -path "$WinPETemp\Media\Sources\boot.wim" -destination "$Destination\Custom.wim"
+        New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+        Copy-Item -path "$WinPETemp\Media\Sources\boot.wim" -destination "$Destination\" | Out-Null
+        Remove-Item -Path "$Destination\Custom.wim" | Out-Null
+        Rename-Item -Path "$Destination\Boot.wim" -NewName 'Custom.wim' | Out-Null
+        Remove-item -Path $WinPETemp -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        Return "$Destination\Custom.wim"
+
         }
     End
     {
