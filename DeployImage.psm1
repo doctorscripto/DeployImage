@@ -566,4 +566,3 @@ function New-WindowsPEWim
     }
 }
 
-Export-ModuleMember -Function *
