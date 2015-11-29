@@ -28,7 +28,7 @@ Function Remove-DriveLetter
 
 function Get-ArchitectureString
 {
-$Arch=(Get-CimInstance win32_operatingsystem).OSArchitecture
+$Arch=(Get-CimInstance -Namespace win32_operatingsystem).OSArchitecture
 if ($Arch='32-Bit')
     {
     Return [string]' (x86)'
@@ -53,7 +53,7 @@ if ($Arch='32-Bit')
 
 function Test-WindowsADK
 {
-(Test-Path "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
+(Test-Path -PathType "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
 }
 
 function Get-AttachedDisk
@@ -81,13 +81,13 @@ If ($USB)
     }
 
 
-if ($GUI -and ((Get-CimInstance Win32_OperatingSystem).OperatingSystemSKU -ne 1))
+if ($GUI -and ((Get-CimInstance -Namespace Win32_OperatingSystem).OperatingSystemSKU -ne 1))
     {
-        Get-Disk | Where { $DiskType -match $_.BusType } | Out-GridView -PassThru
+        Get-Disk | Where-Object { $DiskType -match $_.BusType } | Out-GridView -PassThru
     }
     Else
     {
-        Get-Disk | Where { $DiskType -match $_.BusType } 
+        Get-Disk | Where-Object { $DiskType -match $_.BusType } 
     }
 }
 
@@ -136,7 +136,7 @@ Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM -confirm:$false -ErrorAct
    Create a UEFI Partition structure on Disk 0, assign Drive Z: to the System Drive and Drive Y: to the OSDrive
 
    $Disk=Get-Disk -number 0
-   New-PhysicalPartitionStructure -Disk $Disk -SystemDrive Z -OSDrive Y
+   New-PhysicalPartitionStructure -Disk $Disk -BootDrive Z -OSDrive Y
    
 #>
 
@@ -160,7 +160,7 @@ function New-PartitionStructure
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=3)]
-        [string]$SystemDrive,
+        [string]$BootDrive,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=4)]
@@ -181,9 +181,9 @@ function New-PartitionStructure
             }
             else
             {
-            $SystemPartition = New-Partition –InputObject $Disk -Size (350MB) -IsActive 
-            Format-Volume -NewFileSystemLabel "System" -FileSystem FAT32 -Partition $SystemPartition -confirm:$False
-            Set-Partition -InputObject $SystemPartition -NewDriveLetter $SystemDrive
+            $BootPartition = New-Partition –InputObject $Disk -Size (350MB) -IsActive 
+            Format-Volume -NewFileSystemLabel "Boot" -FileSystem FAT32 -Partition $BootPartition -confirm:$False
+            Set-Partition -InputObject $BootPartition -NewDriveLetter $BootDrive
 
             $OSPartition = New-Partition –InputObject $Disk -UseMaximumSize
             Format-Volume -NewFileSystemLabel "Windows" -FileSystem NTFS -Partition $OSPartition -confirm:$False
@@ -199,9 +199,10 @@ function New-PartitionStructure
     Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
     Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
-    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $SystemDrive ; # Create Microsoft Basic Partition and Set System as bootable
-    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'System'
-    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $BootDrive ; # Create Microsoft Basic Partition and Set System as bootable
+    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'Boot'
+#    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
     Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
@@ -430,12 +431,12 @@ function Send-BootCode
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
-        [string]$SystemDrive,
+        [string]$BootDrive,
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
         [string]$OSDrive,
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
         [switch]$USB
@@ -447,7 +448,7 @@ function Send-BootCode
     }
     else
     {
-        & "$($env:windir)\system32\bcdboot" "$SystemDrive`:\Windows" /s "$OSDrive`:"  /f ALL
+    & "$($env:windir)\system32\bcdboot" "$OSDrive`:\Windows" /s "$BootDrive`:" /f ALL
     }
 }
 
@@ -472,13 +473,13 @@ function New-NanoServerWIM
     }
  
     Process
-    {
-        Remove-Item $Destination -Force -Recurse -ErrorAction SilentlyContinue
+    { 
+        Remove-Item -Path $Destination -Force -Recurse -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Path $Destination -Force
         New-Item -ItemType Directory -Path "$Destination\Mount" -Force
 
         Copy-Item -Path "$($MediaPath)NanoServer\Nanoserver.wim" -Destination $Destination
-        Set-ItemProperty "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False
+        Set-ItemProperty -Path "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False
         
         Mount-WindowsImage -ImagePath "$Destination\Mount\Nanoserver.wim" -Index 1 -path "$Destination\Mount"
         

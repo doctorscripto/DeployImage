@@ -9,7 +9,7 @@ Mount-VHD -Path $vhd | Out-Null
 $Disk=Get-Vhd -Path $Vhd | Get-Disk
 
 Clear-DiskStructure -Disk $disk
-New-PartitionStructure -Disk $disk -MBR -OSDrive $OsDrive
+New-PartitionStructure -Disk $disk -MBR -SystemDrive $SystemDrive -OSDrive $OsDrive
 Expand-WindowsImage –imagepath "$wimfile" –index 1 –ApplyPath "$OSDrive`:\"
 Send-BootCode -SystemDrive $SystemDrive -OSDrive $OSDrive
 
