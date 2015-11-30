@@ -28,7 +28,7 @@ Function Remove-DriveLetter
 
 function Get-ArchitectureString
 {
-$Arch=(Get-CimInstance -Namespace win32_operatingsystem).OSArchitecture
+$Arch=(Get-CimInstance -Classname win32_operatingsystem).OSArchitecture
 if ($Arch='32-Bit')
     {
     Return [string]' (x86)'
@@ -81,7 +81,7 @@ If ($USB)
     }
 
 
-if ($GUI -and ((Get-CimInstance -Namespace Win32_OperatingSystem).OperatingSystemSKU -ne 1))
+if ($GUI -and ((Get-CimInstance -Classname Win32_OperatingSystem).OperatingSystemSKU -ne 1))
     {
         Get-Disk | Where-Object { $DiskType -match $_.BusType } | Out-GridView -PassThru
     }
