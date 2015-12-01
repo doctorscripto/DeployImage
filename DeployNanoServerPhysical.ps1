@@ -1,9 +1,19 @@
-﻿$Wimfile='D:\Nanoserver\NanoServer.wim'
+﻿    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $WinPEMedia
+    )
+
+
+$Wimfile=$WinPeMedia+':\Nanoserver\NanoServer.wim'
 $BootDrive='Y'
 $OSDrive='Z'
 
 $Disk=Get-AttachedDisk
-$DriverPath='C:\Dell'
+$DriverPath=$WinPEMedia+':\Dell'
 
 Clear-DiskStructure -Disk $disk
 New-PartitionStructure -Disk $disk -BootDrive $BootDrive -OSDrive $OsDrive

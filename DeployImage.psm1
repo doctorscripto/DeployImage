@@ -1,3 +1,33 @@
+Function Copy-WithProgress
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $Source,
+        [Parameter(Mandatory=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $Destination
+        
+    )
+$Source=$Source.tolower()
+
+$Filelist=get-childitem $source -Recurse
+$Total=$Filelist.count
+$Position=0
+    foreach ($File in $Filelist)
+    { 
+        $Filename=$File.Fullname.tolower().replace($Source,'') 
+        $DestinationFile=($Destination+$Filename).replace('\\','\')
+        Write-Progress -Activity "Copying data from $source to $Destination" -Status "Copying Files" -PercentComplete (($Position/$total)*100)
+        Copy-Item $File.FullName -Destination $DestinationFile
+        $Position++
+    }
+}
+
 Function Remove-DriveLetter 
 {
 [CmdletBinding()]
@@ -29,7 +59,7 @@ Function Remove-DriveLetter
 function Get-ArchitectureString
 {
 $Arch=(Get-CimInstance -Classname win32_operatingsystem).OSArchitecture
-if ($Arch='32-Bit')
+if ($Arch -eq '64-Bit')
     {
     Return [string]' (x86)'
     }
@@ -453,6 +483,7 @@ function Send-BootCode
 }
 
 function New-NanoServerWIM
+
 {
     [CmdletBinding()]
     Param
@@ -464,7 +495,59 @@ function New-NanoServerWIM
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=1)]
-        [string]$Destination='C:\NanoTemp'
+        [string]$Destination='C:\NanoTemp',
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=2)]
+        [switch]$Compute=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=3)]
+        [switch]$Clustering=$True,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=4)]
+        [switch]$GuestDrivers=$True,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=5)]
+        [switch]$OEMDrivers=$True,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=6)]
+        [switch]$Storage=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=7)]
+        [switch]$Defender=$True,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=8)]
+        [switch]$ReverseForwarders=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=9)]
+        [switch]$DNS=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=10)]
+        [switch]$DSC=$True,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=11)]
+        [switch]$IIS=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=12)]
+        [switch]$SCVMM=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=13)]
+        [switch]$NPDS=$False,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=14)]
+        [switch]$DCB=$False
 
      )
 
@@ -475,27 +558,97 @@ function New-NanoServerWIM
     Process
     { 
         Remove-Item -Path $Destination -Force -Recurse -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $Destination -Force
-        New-Item -ItemType Directory -Path "$Destination\Mount" -Force
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        New-Item -ItemType Directory -Path "$Destination\Mount" -Force | Out-Null
 
-        Copy-Item -Path "$($MediaPath)NanoServer\Nanoserver.wim" -Destination $Destination
-        Set-ItemProperty -Path "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False
+        Copy-Item -Path "$($MediaPath)NanoServer\Nanoserver.wim" -Destination $Destination | Out-Null
+        Set-ItemProperty -Path "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False | Out-Null
         
-        Mount-WindowsImage -ImagePath "$Destination\Mount\Nanoserver.wim" -Index 1 -path "$Destination\Mount"
+        Mount-WindowsImage -ImagePath "$Destination\Nanoserver.wim" -Index 1 -path "$Destination\Mount"| Out-Null
         
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\"
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\"
-        
-        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts" -Force -ItemType Directory
-        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File
+        If ($Compute) # Hyper-V Role
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
 
-        Dismount-WindowsImage -Path "$Destination\Mount" -Save
+        If ($Containers) # Windows Containers
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Containers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Containers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($DCB) # Data Center Bridging
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DCB-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DCB-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($Defender) # Windows Defender
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($DNS) # DNS Server
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DNS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DNS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($DSC) # Desired State Configuration
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DSC-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DSC-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($Clustering) # Failover Clustering
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-FailoverCluster-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-FailoverCluster-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($GuestDrivers) # Hyper-V Guest Driver Integration
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($IIS) # IIS Server
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-IIS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-IIS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($NPDS) # Network Performance Diagnostics Service
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-NPDS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-NPDS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($OEMDrivers) # OEM Drivers
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($Storage) # File Server and Storage Components
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Storage-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Storage-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($ReverseForwarders) # Reverse Forwarders for App compat
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-OneCore-ReverseForwarders-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-OneCore-ReverseForwarders-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+        If ($SCVMM) # System Center VMM components
+        {
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-Windows-Server-SCVMM-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-Windows-Server-SCVMM-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-Windows-Server-SCVMM-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-Windows-Server-SCVMM-Package.cab" -Path "$Destination\Mount\" | Out-NULL
+        }
+
+        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts" -Force -ItemType Directory | Out-Null
+        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File | Out-Null
+
+        Dismount-WindowsImage -Path "$Destination\Mount" -Save | Out-Null
+        
+        Remove-Item -Path "$Destination\NanoCustom.wim" -ErrorAction SilentlyContinue | Out-Null
+        Copy-Item -path "$Destination\NanoServer.wim" -destination "$Destination\NanoCustom.wim" | Out-Null
+        Return "$Destination\NanoCustom.wim"
+
 
     }     
 End
@@ -551,6 +704,27 @@ function New-WindowsPEWim
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-StorageWMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         
+        # Custom PowerShell Script to launch after Wpeinit.exe
+        # This is hardcoded presently to automatically 
+        # Start the DeployImage module
+        # from the WinPE media for Easy Server Deployment
+        $PowerShellScript=@'
+Set-ExecutionPolicy -executionpolicy Bypass
+$USBDisk=(Get-Disk | Where-Object { $_.BusType -eq 'USB' -and '$_.IsActive' })
+$DriveLetter=($USBDisk | Get-Partition).DriveLetter
+Set-Location ($DriveLetter+':\DeployImage\')
+Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1'
+'@
+
+        # Carriage Return (Ascii13) and Linefeed (Ascii10)
+        # the characters at the end of each line in a Here String
+        $CRLF=[char][byte]13+[char][byte]10
+
+        $PowerShellCommand=$PowerShellScript.replace($CRLF,';')
+
+        $PowerShellStart='powershell.exe -executionpolicy bypass -noexit -command "'+$PowerShellCommand+'"'        
+        Add-Content -Path "$WinPEtemp\Mount\Windows\System32\Startnet.cmd" -Value $PowerShellStart
+        
         Dismount-WindowsImage -path "$WinPETemp\Mount" -Save | Out-Null
         
         New-Item -Path $Destination -ItemType Directory -Force | Out-Null
@@ -565,4 +739,3 @@ function New-WindowsPEWim
     {
     }
 }
-

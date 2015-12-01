@@ -27,9 +27,4 @@ Copy-Item -Path "$WinPETemp\Media\*" -destination "$WinPeKey\" -Recurse
 
 Send-BootCode -OSDrive $OSDrive -USB
 
-If ($DriverPath -ne $NULL)
-{
-    Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
-}
-
 Remove-DriveLetter -DriveLetter $OSDrive
