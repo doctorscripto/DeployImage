@@ -231,7 +231,6 @@ function New-PartitionStructure
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $BootDrive ; # Create Microsoft Basic Partition and Set System as bootable
     Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'Boot'
-#    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
     Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
@@ -713,7 +712,7 @@ Set-ExecutionPolicy -executionpolicy Bypass
 $USBDisk=(Get-Disk | Where-Object { $_.BusType -eq 'USB' -and '$_.IsActive' })
 $DriveLetter=($USBDisk | Get-Partition).DriveLetter
 Set-Location ($DriveLetter+':\DeployImage\')
-Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1'
+Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1)'
 '@
 
         # Carriage Return (Ascii13) and Linefeed (Ascii10)

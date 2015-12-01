@@ -13,7 +13,7 @@ $BootDrive='Y'
 $OSDrive='Z'
 
 $Disk=Get-AttachedDisk
-$DriverPath=$WinPEMedia+':\Dell'
+$DriverPath=$WinPEMedia+':\Drivers'
 
 Clear-DiskStructure -Disk $disk
 New-PartitionStructure -Disk $disk -BootDrive $BootDrive -OSDrive $OsDrive
@@ -24,6 +24,3 @@ If ($DriverPath -ne $NULL)
 {
     Add-WindowsDriver -Driver $DriverPath -Recurse -Path "$OSDrive`:\" -ErrorAction SilentlyContinue
 }
-
-Remove-DriveLetter -Driveletter $BootDrive
-Remove-DriveLetter -Driveletter $OSdrive
