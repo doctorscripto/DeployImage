@@ -83,7 +83,7 @@ if ($Arch -eq '64-Bit')
 
 function Test-WindowsADK
 {
-(Test-Path -PathType "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
+(Test-Path -Path "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
 }
 
 function Get-AttachedDisk
@@ -498,7 +498,7 @@ function New-NanoServerWIM
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
-        [switch]$Compute=$False,
+        [switch]$Compute=$True,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=3)]
@@ -561,7 +561,7 @@ function New-NanoServerWIM
         New-Item -ItemType Directory -Path "$Destination\Mount" -Force | Out-Null
 
         Copy-Item -Path "$($MediaPath)NanoServer\Nanoserver.wim" -Destination $Destination | Out-Null
-        Set-ItemProperty -Path "$Destination\Nanoserver.wim" -Name IsReadOnly -Value $False | Out-Null
+        Set-ItemProperty -Path "$($Destination)\Nanoserver.wim" -Name IsReadOnly -Value $False | Out-Null
         
         Mount-WindowsImage -ImagePath "$Destination\Nanoserver.wim" -Index 1 -path "$Destination\Mount"| Out-Null
         
