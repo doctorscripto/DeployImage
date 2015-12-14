@@ -2,16 +2,16 @@
 $OSdrive='L'
 $WinPETemp='C:\TempPE'
 $Wimfile='C:\Pewim\custom.wim'
-$DriverPath='C:\Dell'
+$DriverPath='C:\Drivers'
 $NanoMedia='C:\'
 $WinPeDrive='C'
+
+$Wimfile=New-WindowsPEWim
+$CustomNano=New-NanoServerWIM -Mediapath C:\ -Destination C:\NanoTemp -Compute
 
 $Disk=Get-AttachedDisk -USB -GUI
 $Env:WinPERoot="$($WinPEDrive)`:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment" 
 $WinADK="$($Env:WinPERoot)\amd64"
-
-$CustomPE=New-WindowsPEWim
-$CustomNano=New-NanoServerWIM -Mediapath C:\ -Destination C:\NanoTemp -Compute
 
 Remove-item -Path $WinPETemp -Recurse -Force
 New-Item -ItemType Directory -Path $WinPETemp -Force
