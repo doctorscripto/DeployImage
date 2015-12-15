@@ -24,9 +24,55 @@ $Position=0
         $DestinationFile=($Destination+$Filename).replace('\\','\')
         Write-Progress -Activity "Copying data from $source to $Destination" -Status "Copying Files" -PercentComplete (($Position/$total)*100)
         Copy-Item $File.FullName -Destination $DestinationFile
+	$File.Fullname
+	$DestinationFile
         $Position++
     }
 }
+
+<#
+.Synopsis
+   Copies supplied sample scripts from the DeployImage module 
+.DESCRIPTION
+   Copy all sample PS1 files from DeployImage to the destination directory
+.EXAMPLE
+   Copies sample scripts to current directory
+   
+   Copy-DeployImageSample
+
+.EXAMPLE
+   Copies sample scripts to C:\Foo
+   
+   Copy-DeployImageSample -Destination C:\Foo
+
+
+#>
+
+Function Copy-DeployImageSample
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $Destination='.\'
+        
+    )
+$Modulepath=Split-path ((get-module deployimage).path)
+get-childitem -Path "$Modulepath\*.ps1" | copy-item -Destination $Destination
+}
+ 
+<#
+.Synopsis
+   Removes a Drive Letter from an assigned partition
+.DESCRIPTION
+   Removes a Drive Letter from an assigned partition
+.EXAMPLE
+   Remove L: from it's assigned partition, freeing it back to available drive letters
+   
+   Remove-DriveLetter -DriveLetter L
+#>
 
 Function Remove-DriveLetter 
 {
