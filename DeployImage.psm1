@@ -15,7 +15,7 @@ Function Copy-WithProgress
     )
 $Source=$Source.tolower()
 
-$Filelist=get-childitem $source -Recurse
+$Filelist=get-childitem -path $source -Recurse
 $Total=$Filelist.count
 $Position=0
     foreach ($File in $Filelist)
@@ -23,7 +23,7 @@ $Position=0
         $Filename=$File.Fullname.tolower().replace($Source,'') 
         $DestinationFile=($Destination+$Filename).replace('\\','\')
         Write-Progress -Activity "Copying data from $source to $Destination" -Status "Copying Files" -PercentComplete (($Position/$total)*100)
-        Copy-Item $File.FullName -Destination $DestinationFile
+        Copy-Item -path $File.FullName -Destination $DestinationFile
 	$File.Fullname
 	$DestinationFile
         $Position++
@@ -59,7 +59,7 @@ Function Copy-DeployImageSample
         $Destination='.\'
         
     )
-$Modulepath=Split-path ((get-module deployimage).path)
+$Modulepath=Split-path -path ((get-module -Name deployimage).path)
 get-childitem -Path "$Modulepath\*.ps1" | copy-item -Destination $Destination
 }
  
@@ -340,7 +340,7 @@ $SanPolicyXML=@"
 
 Add-content -path "$OSDrive`:\san-policy.xml" -Value $SanpolicyXML
 
-Use-WindowsUnattend –unattendpath "$OSDrive`:\san-policy.xml" –path "$OSdrive`:\" | Out-Null
+Use-WindowsUnattend -UnattendPath "$OSDrive`:\san-policy.xml" -path "$OSdrive`:\" | Out-Null
 }
 
 <#
