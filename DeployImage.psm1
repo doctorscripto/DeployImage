@@ -257,13 +257,8 @@ function New-PartitionStructure
             }
             else
             {
-            $BootPartition = New-Partition –InputObject $Disk -Size (350MB) -IsActive 
-            Format-Volume -NewFileSystemLabel "Boot" -FileSystem FAT32 -Partition $BootPartition -confirm:$False
-            Set-Partition -InputObject $BootPartition -NewDriveLetter $BootDrive
-
-            $OSPartition = New-Partition –InputObject $Disk -UseMaximumSize
-            Format-Volume -NewFileSystemLabel "Windows" -FileSystem NTFS -Partition $OSPartition -confirm:$False
-            Set-Partition -InputObject $OSPartition -NewDriveLetter $OSDrive
+            $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive
+            Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
             }
     
     }
@@ -774,7 +769,7 @@ Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1)'
         
         New-Item -Path $Destination -ItemType Directory -Force | Out-Null
         Copy-Item -path "$WinPETemp\Media\Sources\boot.wim" -destination "$Destination\" | Out-Null
-        Remove-Item -Path "$Destination\Custom.wim" | Out-Null
+        Remove-Item -Path "$Destination\Custom.wim" -erroraction SilentlyContinue | Out-Null
         Rename-Item -Path "$Destination\Boot.wim" -NewName 'Custom.wim' | Out-Null
         Remove-item -Path $WinPETemp -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
         Return "$Destination\Custom.wim"
