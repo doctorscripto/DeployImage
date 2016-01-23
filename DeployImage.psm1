@@ -346,7 +346,7 @@ Use-WindowsUnattend -UnattendPath "$OSDrive`:\san-policy.xml" -path "$OSdrive`:\
 .EXAMPLE
    Create Unattend file for a computer named TestPC with all defaults for Password
     
-   New-Unattend -computername TestPC
+   New-UnattendXMLContent -computername TestPC
 .EXAMPLE
 
 
@@ -378,29 +378,34 @@ function New-UnattendXMLContent
         [string]$AdminPassword='P@ssw0rd',
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
-                   Position=5)]
-        [switch]$JoinDomain,
+                   Position=5,
+                   ParameterSetName='DomainOnline')]
+        [Switch]$Online,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=6,
-                   ParameterSetName='Domain')]
+                   ParameterSetName='DomainOnline')]
         [string]$DomainName,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=7,
-                   ParameterSetName='Domain')]
+                   ParameterSetName='DomainOnline')]
         [string]$DomainAccount,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=8,
-                   ParameterSetName='Domain')]
+                   ParameterSetName='DomainOnline')]
         [string]$DomainPassword,
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=9,
-                   ParameterSetName='Domain')]
-        [string]$DomainOU
-                
+                   ParameterSetName='DomainOnline')]
+        [string]$DomainOU,
+        [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=10)]
+        [string]$OfflineBlob
+                        
      )
 
 $UnattendXML=@"
@@ -415,7 +420,7 @@ $UnattendXML=@"
         </component>
 "@
 
-If($JoinDomain)
+If($JoinDomain -eq 'Online')
 {
 $UnattendXML=$UnattendXML+@"
     
@@ -433,6 +438,32 @@ $UnattendXML=$UnattendXML+@"
          </component>
 "@
 }
+
+if($Network)
+{
+$UnattendXML=$UnattendXML+@"
+          <Interfaces>
+                <Interface wcm:action="add">
+                    <Ipv4Settings>
+                        <DhcpEnabled>false</DhcpEnabled>
+                    </Ipv4Settings>
+                    <Identifier>Local Area Connection</Identifier>
+                    <UnicastIpAddresses>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">$IPv4/$Mask</IpAddress>
+                    </UnicastIpAddresses>
+                    <Routes>
+                        <Route wcm:action="add">
+                            <Identifier>0</Identifier>
+                            <Prefix>0.0.0.0/0</Prefix>
+                            <Metric>20</Metric>
+                            <NextHopAddress>$Gateway</NextHopAddress>
+                        </Route>
+                    </Routes>
+                </Interface>
+            </Interfaces>
+"@
+}
+
 $UnattendXML=$UnattendXML+@"
     
     </settings>
@@ -457,13 +488,35 @@ $UnattendXML=$UnattendXML+@"
             <RegisteredOwner>$Owner</RegisteredOwner>
             <OOBE>
                 <HideEULAPage>true</HideEULAPage>
-                <SkipMachineOOBE>true</SkipMachineOOBE>
+<--                <SkipMachineOOBE>true</SkipMachineOOBE> -->
             </OOBE>
         </component>
     </settings>
+"@
+
+If ($OfflineBlob)
+{
+$UnattendXML=$UnattendXML+@"
+
+   <settings pass="offlineServicing">
+        <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <OfflineIdentification>
+                <Provisioning>
+                    <AccountData>$OfflineBlob</AccountData>
+                </Provisioning>
+            </OfflineIdentification>
+        </component>
+    </settings>
+"@
+}
+
+
+$UnattendXML=$UnattendXML+@"
+
     <cpi:offlineImage cpi:source="" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
 </unattend>
 "@
+
 
 Return $UnattendXML
 
