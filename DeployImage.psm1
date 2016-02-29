@@ -1,3 +1,79 @@
+function Convert-WIMtoVHD
+{
+[CmdletBinding()]
+Param(
+# Size of the VHD file
+#
+$Size=20GB,
+# Obtain the default location of 
+# Virtual HardDisks in Hyper-V
+#
+$VHDPath='.\',
+# Location of the WindowsImage (WIM)
+# File to convert to VHD
+#
+$Wimfile='C:\Windows7\Install.wim',
+# In the case of a single partition setup like 
+# USB Key or simple VHD SystemDrive and OSDrive
+# Will be the same Letter
+#
+# Drive Letter being assigned to Boot Drive
+#
+$OSDrive='L',
+# Netbios name of computer and VMName
+#
+$VM='Contoso-Win7',
+# Index of Image in WIM file
+#
+$Index=1
+
+)
+
+If ($Vhdpath -eq '.\' -and (Get-Command Get-vmhost).count -ge 1)
+    {
+    $VHDPath=(Get-VMHost).VirtualHardDiskPath
+    }
+
+# Define VHD filename 
+#
+$VHD="$VhdPath\$VM.vhd"
+
+If ((Test-Path $VHD) -ne $false)
+    {
+        Return $NULL
+    }
+Else
+    {
+    # Create a new VHD
+    #
+    $Result=New-VHD -Path $Vhd -SizeBytes $Size -Dynamic
+
+    # Mount the VHD and identify it's Disk Object
+    #
+    $Result=Mount-VHD -Path $vhd
+    $Disk=Get-Vhd -Path $Vhd | Get-Disk
+
+    # Create a new Partition Structure of style
+    # MBR, Format and Partition System and OSDrive
+    #
+    New-PartitionStructure -Disk $disk -MBR -BootDrive $OSDrive -OSDrive $OsDrive
+
+    # Expand the Windows Image for Nano Server to the OSDrive
+    #
+    Expand-WindowsImage –imagepath "$wimfile" –index $Index –ApplyPath "$OSDrive`:\"
+
+    # Send the Boot files to the Disk Structure
+    #
+    Send-BootCode -BootDrive $OSDrive -OSDrive $OSDrive
+    # Dismount the Completed VHD
+    #
+    Dismount-VHD $VHD
+    # Return path of VHD
+    #
+    Return $VHD
+    }
+}
+
 Function Copy-WithProgress
 {
     [CmdletBinding()]
@@ -92,6 +168,7 @@ Function Remove-DriveLetter
 	   }
 	until ($Status -eq $NULL)
 }
+
 
 <#
 .Synopsis
@@ -248,34 +325,34 @@ function New-PartitionStructure
     
     if ($MBR)
     {
-    Initialize-Disk -Number $Disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
+    $Result=Initialize-Disk -Number $Disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
         
             if ($USB)
             {
             $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive
-            Format-Volume -Partition $Partition  -FileSystem FAT32 -NewFileSystemLabel 'Windows'
+            $Result=Format-Volume -Partition $Partition  -FileSystem FAT32 -NewFileSystemLabel 'Windows'
             }
             else
             {
             $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive
-            Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
+            $Result=Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
             }
     
     }
     Else
     {
-    Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
+    $Result=Initialize-Disk -Number $Disk.Number -PartitionStyle GPT
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 128MB ; # Create Microsoft Basic Partition
-    Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
-    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
+    $Result=Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
+    $Result=Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
     $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $BootDrive ; # Create Microsoft Basic Partition and Set System as bootable
-    Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'Boot'
-    Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber
+    $Result=Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'Boot'
+    $Result=Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber
 
     $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
-    Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
+    $Result=Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
     }
     
 }
@@ -404,7 +481,11 @@ function New-UnattendXMLContent
         [Parameter(Mandatory=$false,
                    ValueFromPipelineByPropertyName=$true,
                    Position=10)]
-        [string]$OfflineBlob
+        [string]$OfflineBlob,
+                [Parameter(Mandatory=$false,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=11)]
+        [switch]$SkipOOBE
                         
      )
 
@@ -486,11 +567,21 @@ $UnattendXML=$UnattendXML+@"
 	      </AutoLogon>
          <RegisteredOrganization>$Organization</RegisteredOrganization>
             <RegisteredOwner>$Owner</RegisteredOwner>
+"@
+
+If ($SkipOOBE)
+{
+$UnattendXML=$UnattendXML+@"
             <OOBE>
                 <HideEULAPage>true</HideEULAPage>
-<--                <SkipMachineOOBE>true</SkipMachineOOBE> -->
+                <SkipMachineOOBE>true</SkipMachineOOBE>
             </OOBE>
         </component>
+"@
+}
+
+$UnattendXML=$UnattendXML+@"
+
     </settings>
 "@
 
@@ -498,7 +589,7 @@ If ($OfflineBlob)
 {
 $UnattendXML=$UnattendXML+@"
 
-   <settings pass="offlineServicing">
+    <settings pass="offlineServicing">
         <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <OfflineIdentification>
                 <Provisioning>
@@ -565,14 +656,18 @@ function Send-BootCode
         [switch]$USB
     
     )
+    $oldpref=$ErrorActionPreference
+    $ErrorActionPreference='SilentlyContinue'
+
     if ($USB)
     {
-        & "$($env:windir)\system32\bootsect.exe" /nt60 "$OSDrive`:"
+        & "$($env:windir)\system32\bootsect.exe" /nt60 "$OSDrive`:" > NULL
     }
     else
     {
-    & "$($env:windir)\system32\bcdboot" "$OSDrive`:\Windows" /s "$BootDrive`:" /f ALL
+    & "$($env:windir)\system32\bcdboot" "$OSDrive`:\Windows" /s "$BootDrive`:" /f ALL > NULL
     }
+    $ErrorActionPreference=$oldpref
 }
 
 function New-NanoServerWIM
@@ -806,7 +901,7 @@ Set-ExecutionPolicy -executionpolicy Bypass
 $USBDisk=(Get-Disk | Where-Object { $_.BusType -eq 'USB' -and '$_.IsActive' })
 $DriveLetter=($USBDisk | Get-Partition).DriveLetter
 Set-Location ($DriveLetter+':\DeployImage\')
-Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1)'
+Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1')
 '@
 
         # Carriage Return (Ascii13) and Linefeed (Ascii10)
