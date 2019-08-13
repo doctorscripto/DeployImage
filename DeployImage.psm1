@@ -5,7 +5,7 @@ Param(
 # Size of the VHD file
 #
 $Size=20GB,
-# Obtain the default location of 
+# Obtain the default location of
 # Virtual HardDisks in Hyper-V
 #
 $VHDPath='.\',
@@ -13,13 +13,6 @@ $VHDPath='.\',
 # File to convert to VHD
 #
 $Wimfile='C:\Windows7\Install.wim',
-# In the case of a single partition setup like 
-# USB Key or simple VHD SystemDrive and OSDrive
-# Will be the same Letter
-#
-# Drive Letter being assigned to Boot Drive
-#
-$OSDrive='L',
 # Netbios name of computer and VMName
 #
 $VM='Contoso-Win7',
@@ -34,13 +27,13 @@ If ($Vhdpath -eq '.\' -and (Get-Command Get-vmhost).count -ge 1)
     $VHDPath=(Get-VMHost).VirtualHardDiskPath
     }
 
-# Define VHD filename 
+# Define VHD filename
 #
 $VHD="$VhdPath\$VM.vhd"
-
-If ((Test-Path $VHD) -ne $false)
+$OSDrive=(Get-NextActiveDriveLetter).DriveLetter
+If ((Test-Path $VHD) -ne $false -or $OSDrive -eq 'None')
     {
-        Return $NULL
+        Return "Filename $VHD already exists or no available drive letter"
     }
 Else
     {
@@ -58,9 +51,9 @@ Else
     #
     New-PartitionStructure -Disk $disk -MBR -BootDrive $OSDrive -OSDrive $OsDrive
 
-    # Expand the Windows Image for Nano Server to the OSDrive
+    # Expand the Windows Image to the OSDrive
     #
-    Expand-WindowsImage –imagepath "$wimfile" –index $Index –ApplyPath "$OSDrive`:\"
+    Expand-WindowsImage -imagepath "$wimfile" -index $Index -ApplyPath "$OSDrive`:\"
 
     # Send the Boot files to the Disk Structure
     #
@@ -87,7 +80,7 @@ Function Copy-WithProgress
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         $Destination
-        
+
     )
 $Source=$Source.tolower()
 
@@ -95,8 +88,8 @@ $Filelist=get-childitem -path $source -Recurse
 $Total=$Filelist.count
 $Position=0
     foreach ($File in $Filelist)
-    { 
-        $Filename=$File.Fullname.tolower().replace($Source,'') 
+    {
+        $Filename=$File.Fullname.tolower().replace($Source,'')
         $DestinationFile=($Destination+$Filename).replace('\\','\')
         Write-Progress -Activity "Copying data from $source to $Destination" -Status "Copying Files" -PercentComplete (($Position/$total)*100)
         Copy-Item -path $File.FullName -Destination $DestinationFile
@@ -108,17 +101,17 @@ $Position=0
 
 <#
 .Synopsis
-   Copies supplied sample scripts from the DeployImage module 
+   Copies supplied sample scripts from the DeployImage module
 .DESCRIPTION
    Copy all sample PS1 files from DeployImage to the destination directory
 .EXAMPLE
    Copies sample scripts to current directory
-   
+
    Copy-DeployImageSample
 
 .EXAMPLE
    Copies sample scripts to C:\Foo
-   
+
    Copy-DeployImageSample -Destination C:\Foo
 
 
@@ -133,12 +126,12 @@ Function Copy-DeployImageSample
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         $Destination='.\'
-        
+
     )
 $Modulepath=Split-path -path ((get-module -Name deployimage).path)
 get-childitem -Path "$Modulepath\*.ps1" | copy-item -Destination $Destination
 }
- 
+
 <#
 .Synopsis
    Removes a Drive Letter from an assigned partition
@@ -146,11 +139,11 @@ get-childitem -Path "$Modulepath\*.ps1" | copy-item -Destination $Destination
    Removes a Drive Letter from an assigned partition
 .EXAMPLE
    Remove L: from it's assigned partition, freeing it back to available drive letters
-   
+
    Remove-DriveLetter -DriveLetter L
 #>
 
-Function Remove-DriveLetter 
+Function Remove-DriveLetter
 {
 [CmdletBinding()]
     Param
@@ -169,10 +162,71 @@ Function Remove-DriveLetter
 	until ($Status -eq $NULL)
 }
 
+<#
+.Synopsis
+   Builds an array of Drive Letters in use in Windows
+.DESCRIPTION
+   This will return an Array of Letters sorted that are presently in use in the Windows O/S
+.EXAMPLE
+   Get-ActiveDriveLetter
+#>
+
+Function Get-ActiveDriveLetter()
+{
+
+    Get-Volume | Where-Object { $_.DriveLetter } | Sort-object DriveLetter | Select-Object -ExpandProperty DriveLetter
+
+}
 
 <#
 .Synopsis
-   Identifies if the Operating System is 32bit or 64bit 
+   Tests if a Drive Letter is availale in Windows
+.DESCRIPTION
+   This will return a $TRUE if a Drive Letter is available to use in the Windows O/S
+.EXAMPLE
+   Test-ActiveDriveLetter
+#>
+
+Function Test-ActiveDriveLetter([String]$DriveLetter)
+{
+
+    (Get-ActiveDriveLetter).contains($DriveLetter)
+
+}
+
+<#
+.Synopsis
+   Provides the Next available Drive Letter for use in Windows
+.DESCRIPTION
+   This will the next letter available for use
+.EXAMPLE
+   Get-NextActiveDriveLetter
+#>
+
+Function Get-NextActiveDriveLetter()
+{
+   $Counter=67
+    do
+    {
+        $DriveLetter=[char][byte]$Counter
+        $Result=Test-ActiveDriveLetter -DriveLetter $DriveLetter
+        $Counter++
+    }
+    until ($Result -eq $False -or $Counter -eq 91)
+
+    If ($Result -eq $True)
+    {
+    [pscustomobject]@{'DriveLetter'='None'}
+    }
+    else
+    {
+    [pscustomobject]@{'DriveLetter'=$DriveLetter}
+    }
+}
+
+<#
+.Synopsis
+   Identifies if the Operating System is 32bit or 64bit
 .DESCRIPTION
    If the Operating system is 64bit, it will return the string " (x86)" to append to a "Program Files" path
 .EXAMPLE
@@ -206,7 +260,7 @@ if ($Arch -eq '64-Bit')
 
 function Test-WindowsADK
 {
-(Test-Path -Path "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") 
+(Test-Path -Path "C:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment")
 }
 
 function Get-AttachedDisk
@@ -224,9 +278,9 @@ function Get-AttachedDisk
         [switch]$GUI
     )
 
-If ($USB) 
-    { 
-        $DiskType='USB' 
+If ($USB)
+    {
+        $DiskType='USB'
     }
     Else
     {
@@ -240,7 +294,7 @@ if ($GUI -and ((Get-CimInstance -Classname Win32_OperatingSystem).OperatingSyste
     }
     Else
     {
-        Get-Disk | Where-Object { $DiskType -match $_.BusType } 
+        Get-Disk | Where-Object { $DiskType -match $_.BusType }
     }
 }
 
@@ -251,12 +305,12 @@ if ($GUI -and ((Get-CimInstance -Classname Win32_OperatingSystem).OperatingSyste
    When provided with a Disk object from "Get-Disk" it will target and cleanly remove all partitions.  It addresses some of the limitations found with the Clear-Disk Cmdlet.
 .EXAMPLE
    Erase partition structure on Disk Number 1
-   
+
    $Disk=Get-Disk -Number 1
    Clear-DiskStructure -Disk $disk
 .EXAMPLE
    Erase partition structure on all USB attached disks
-   
+
    $DiskList=Get-Disk | Where { $_.BusType -eq 'USB'}
    Foreach ( $Disk in $Disklist )
    {
@@ -274,7 +328,7 @@ function Clear-DiskStructure
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         $Disk
-        
+
     )
 Get-Disk -Number ($Disk.number) | Get-Partition | Remove-partition -confirm:$false -erroraction SilentlyContinue
 Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM -confirm:$false -ErrorAction SilentlyContinue
@@ -290,7 +344,7 @@ Clear-Disk -Number $Disk.Number -RemoveData -RemoveOEM -confirm:$false -ErrorAct
 
    $Disk=Get-Disk -number 0
    New-PhysicalPartitionStructure -Disk $Disk -BootDrive Z -OSDrive Y
-   
+
 #>
 
 function New-PartitionStructure
@@ -318,26 +372,30 @@ function New-PartitionStructure
                    ValueFromPipelineByPropertyName=$true,
                    Position=4)]
         [string]$OSDrive
-                
+
      )
 
     Clear-DiskStructure $Disk
-    
+
     if ($MBR)
     {
     $Result=Initialize-Disk -Number $Disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
-        
+
             if ($USB)
             {
-            $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive
+            $Partition=New-Partition -DiskNumber $Disk.Number  -UseMaximumSize -IsActive
             $Result=Format-Volume -Partition $Partition  -FileSystem FAT32 -NewFileSystemLabel 'Windows'
+            $Partition | Add-PartitionAccessPath -AccessPath "$($OSDrive):\"
+
+
             }
             else
             {
-            $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize -IsActive
+            $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize -IsActive
             $Result=Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
+            $Partition | Add-PartitionAccessPath -AccessPath "$($OSDrive):\"
             }
-    
+
     }
     Else
     {
@@ -347,14 +405,18 @@ function New-PartitionStructure
     $Result=Format-Volume -Partition $Partition -FileSystem Fat32 -NewFileSystemLabel 'MSR'
     $Result=Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
 
-    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB -DriveLetter $BootDrive ; # Create Microsoft Basic Partition and Set System as bootable
+    $Partition=New-Partition -DiskNumber $Disk.Number -Size 300MB ; # Create Microsoft Basic Partition and Set System as bootable
     $Result=Format-Volume -Partition $Partition  -FileSystem Fat32 -NewFileSystemLabel 'Boot'
+    $Partition | Add-PartitionAccessPath -AccessPath "$($Bootdrive):\"
+
     $Result=Set-Partition -DiskNumber $Disk.Number -PartitionNumber $Partition.PartitionNumber
 
-    $Partition=New-Partition -DiskNumber $Disk.Number -DriveLetter $OSDrive -UseMaximumSize ; # Take remaining Disk space for Operating System
+    $Partition=New-Partition -DiskNumber $Disk.Number -UseMaximumSize ; # Take remaining Disk space for Operating System
     $Result=Format-Volume -Partition $Partition  -FileSystem NTFS -NewFileSystemLabel 'Windows'
-    }
-    
+    $Partition | Add-PartitionAccessPath -AccessPath "$($OSDrive):\"
+
+}
+
 }
 
 
@@ -422,7 +484,7 @@ Use-WindowsUnattend -UnattendPath "$OSDrive`:\san-policy.xml" -path "$OSdrive`:\
    This Cmdlet will create an Unattend.XML file with suitable content.   Depending upon the provided parameters it can inject the needed content or credentials for a Domain Join or be left to join a Workgroup Configuration.
 .EXAMPLE
    Create Unattend file for a computer named TestPC with all defaults for Password
-    
+
    New-UnattendXMLContent -computername TestPC
 .EXAMPLE
 
@@ -486,7 +548,7 @@ function New-UnattendXMLContent
                    ValueFromPipelineByPropertyName=$true,
                    Position=11)]
         [switch]$SkipOOBE
-                        
+
      )
 
 $UnattendXML=@"
@@ -504,7 +566,7 @@ $UnattendXML=@"
 If($JoinDomain -eq 'Online')
 {
 $UnattendXML=$UnattendXML+@"
-    
+
         <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="x86" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
              <Identification>
                  <Credentials>
@@ -546,7 +608,7 @@ $UnattendXML=$UnattendXML+@"
 }
 
 $UnattendXML=$UnattendXML+@"
-    
+
     </settings>
     <settings pass="oobeSystem">
         <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -628,7 +690,7 @@ Function Send-UnattendXML
         [string]$UnattendData
     )
         $Filename="$((Get-random).ToString()).xml"
-        
+
         Remove-item -Path $Filename -force -ErrorAction SilentlyContinue
         New-Item -ItemType File -Path $Filename
         Add-Content -Path $Filename -Value $UnattendData
@@ -654,7 +716,7 @@ function Send-BootCode
                    ValueFromPipelineByPropertyName=$true,
                    Position=2)]
         [switch]$USB
-    
+
     )
     $oldpref=$ErrorActionPreference
     $ErrorActionPreference='SilentlyContinue'
@@ -670,179 +732,6 @@ function Send-BootCode
     $ErrorActionPreference=$oldpref
 }
 
-function New-NanoServerWIM
-
-{
-    [CmdletBinding()]
-    Param
-    (
-        [Parameter(Mandatory=$true,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=0)]
-        [string]$Mediapath,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=1)]
-        [string]$Destination='C:\NanoTemp',
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=2)]
-        [switch]$Compute=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=3)]
-        [switch]$Clustering=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=4)]
-        [switch]$GuestDrivers=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=5)]
-        [switch]$OEMDrivers=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=6)]
-        [switch]$Storage=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=7)]
-        [switch]$Defender=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=8)]
-        [switch]$ReverseForwarders=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=9)]
-        [switch]$DNS=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=10)]
-        [switch]$DSC=$True,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=11)]
-        [switch]$IIS=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=12)]
-        [switch]$SCVMM=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=13)]
-        [switch]$NPDS=$False,
-        [Parameter(Mandatory=$false,
-                   ValueFromPipelineByPropertyName=$true,
-                   Position=14)]
-        [switch]$DCB=$False
-
-     )
-
-    Begin
-    {
-    }
- 
-    Process
-    { 
-        Remove-Item -Path $Destination -Force -Recurse -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-        New-Item -ItemType Directory -Path "$Destination\Mount" -Force | Out-Null
-
-        Copy-Item -Path "$($MediaPath)NanoServer\Nanoserver.wim" -Destination $Destination | Out-Null
-        Set-ItemProperty -Path "$($Destination)\Nanoserver.wim" -Name IsReadOnly -Value $False | Out-Null
-        
-        Mount-WindowsImage -ImagePath "$Destination\Nanoserver.wim" -Index 1 -path "$Destination\Mount"| Out-Null
-        
-        If ($Compute) # Hyper-V Role
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-
-        If ($Containers) # Windows Containers
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Containers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Containers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($DCB) # Data Center Bridging
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DCB-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DCB-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($Defender) # Windows Defender
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Defender-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($DNS) # DNS Server
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DNS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DNS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($DSC) # Desired State Configuration
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-DSC-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-DSC-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($Clustering) # Failover Clustering
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-FailoverCluster-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-FailoverCluster-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($GuestDrivers) # Hyper-V Guest Driver Integration
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Guest-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($IIS) # IIS Server
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-IIS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-IIS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($NPDS) # Network Performance Diagnostics Service
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-NPDS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-NPDS-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($OEMDrivers) # OEM Drivers
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-OEM-Drivers-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($Storage) # File Server and Storage Components
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-NanoServer-Storage-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-NanoServer-Storage-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($ReverseForwarders) # Reverse Forwarders for App compat
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-OneCore-ReverseForwarders-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-OneCore-ReverseForwarders-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-        If ($SCVMM) # System Center VMM components
-        {
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-Windows-Server-SCVMM-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-Windows-Server-SCVMM-Compute-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\Microsoft-Windows-Server-SCVMM-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        Add-WindowsPackage -PackagePath "$($MediaPath)NanoServer\Packages\en-us\Microsoft-Windows-Server-SCVMM-Package.cab" -Path "$Destination\Mount\" | Out-NULL
-        }
-
-        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts" -Force -ItemType Directory | Out-Null
-        New-Item -Path "$Destination\Mount\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupComplete -Force -ItemType File | Out-Null
-
-        Dismount-WindowsImage -Path "$Destination\Mount" -Save | Out-Null
-        
-        Remove-Item -Path "$Destination\NanoCustom.wim" -ErrorAction SilentlyContinue | Out-Null
-        Copy-Item -path "$Destination\NanoServer.wim" -destination "$Destination\NanoCustom.wim" | Out-Null
-        Return "$Destination\NanoCustom.wim"
-
-
-    }     
-End
-        {
-        }
-}
 
 function New-WindowsPEWim
 {
@@ -861,10 +750,10 @@ function New-WindowsPEWim
     Begin
     {
     }
- 
+
     Process
     {
-        $Env:WinPERoot="C`:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment" 
+        $Env:WinPERoot="C`:\Program Files$(Get-ArchitectureString)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment"
 
         $WinADK="$($Env:WinPERoot)\amd64"
 
@@ -876,7 +765,7 @@ function New-WindowsPEWim
         New-Item -ItemType Directory -Path "$WinPETemp\Mount" -Force | Out-Null
 
         Mount-WindowsImage -ImagePath "$WinPETemp\Media\Sources\boot.wim" -Index 1 -path "$WinPETemp\Mount" | Out-Null
-        
+
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-WMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-WMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-NetFx.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
@@ -891,9 +780,9 @@ function New-WindowsPEWim
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-EnhancedStorage_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\WinPE-StorageWMI.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
         Add-WindowsPackage -PackagePath "$($WinAdk)\Winpe_OCS\en-us\WinPE-StorageWMI_en-us.cab" -Path "$WinPeTemp\Mount" -IgnoreCheck | Out-Null
-        
+
         # Custom PowerShell Script to launch after Wpeinit.exe
-        # This is hardcoded presently to automatically 
+        # This is hardcoded presently to automatically
         # Start the DeployImage module
         # from the WinPE media for Easy Server Deployment
         $PowerShellScript=@'
@@ -910,11 +799,11 @@ Import-Module ($DriveLetter+':\DeployImage\DeployImage.Psd1')
 
         $PowerShellCommand=$PowerShellScript.replace($CRLF,';')
 
-        $PowerShellStart='powershell.exe -executionpolicy bypass -noexit -command "'+$PowerShellCommand+'"'        
+        $PowerShellStart='powershell.exe -executionpolicy bypass -noexit -command "'+$PowerShellCommand+'"'
         Add-Content -Path "$WinPEtemp\Mount\Windows\System32\Startnet.cmd" -Value $PowerShellStart
-        
+
         Dismount-WindowsImage -path "$WinPETemp\Mount" -Save | Out-Null
-        
+
         New-Item -Path $Destination -ItemType Directory -Force | Out-Null
         Copy-Item -path "$WinPETemp\Media\Sources\boot.wim" -destination "$Destination\" | Out-Null
         Remove-Item -Path "$Destination\Custom.wim" -erroraction SilentlyContinue | Out-Null
