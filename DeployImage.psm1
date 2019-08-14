@@ -190,7 +190,7 @@ Function Get-ActiveDriveLetter()
 Function Test-ActiveDriveLetter([String]$DriveLetter)
 {
 
-    (Get-ActiveDriveLetter).contains($DriveLetter)
+    $DriveLetter -in (Get-ActiveDriveLetter)
 
 }
 

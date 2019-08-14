@@ -23,13 +23,21 @@ Get-ArchitectureString
 
 This Cmdlet returns the string " (x86)" if you are on 64bi Windows.  It is meant as a way to inject into the 32 Program Files pathname
 
+Get-ActiveDriveLetter
+
+This Cmdlet pulls up an array of Drive Letters presently in use
+
+Test-ActiveDriveLetter
+
+It will provide a Boolean $True or $False if a Drive Letter is in use when provided
+
+Get-NextActiveDriveLetter
+
+This Cmdlet will identify the next available drive letter for mapping or other purposes
+
 Get-AttachedDisk                
 
 Get-AttachedDisk is a Wrapper on the Get-Disk Cmdlet which targets either Internal or USB.  It also provides a GUI parameter to launch Out-Gridview to select disks
-
-New-NanoServerWIM
-
-This creates a Custom Nanoserver WIM based upon Selected roles and stores it away for deployment.   It works but uses the filename
 
 New-PartitionStructure         
 
@@ -63,21 +71,9 @@ Test-WindowsADK
 
 Test for the Presence of the Windows 10 ADK
 
-There are also 4 sample scripts provided
-
-DeployNanoServerPhysicalMedia.ps1
-
-Prompts for an available USB key, Prepares it as Bootable WinPE with PowerShell and with Nanoserver media, Drivers and DeployImage Module
+There are also a sample script provided
 
 DeployWindowsPE.ps1
 
 Prompts for an available USB key, Prepares it as Bootable WinPE with PowerShell
-
-DeployNanoServerVHD.ps1
-
-Deploy Nanoserver Wim file to a VHD
-
-DeployNanoServerPhysical.ps1
-
-Deploy Nano Server to a Targeted Disk
 
